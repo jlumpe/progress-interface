@@ -1,77 +1,81 @@
 from contextlib import contextmanager
 from unittest.mock import patch
-from string import ascii_letters
 
 import pytest
 
-from progress_interface import default_progress_cls, progress_config, get_progress, iter_progress, \
-	capture_progress, NullProgressMeter, TestProgressMeter
-from progress_interface.libs import TqdmProgressMeter
+from progress_interface.base import default_config, progress_config, get_progress, iter_progress, \
+	capture_progress, NullProgressMeter, REGISTRY
+from progress_interface.meters import TestProgressMeter, TqdmProgressMeter, ClickProgressMeter
 
 
 @contextmanager
-def no_tqdm():
-	"""Context manager which makes tqdm not importable even if installed."""
+def no_import(name: str):
+	"""Context manager which makes a module not importable even if installed."""
 
-	# Setting value of the 'tqdm' key to None in sys.modules will raise a ModuleNotFound error
-	# on import, even if the package is installed.
-	with patch.dict('sys.modules', tqdm=None):
+	# Setting value of a key to None in sys.modules will raise a ModuleNotFound error  on import,
+	# even if the package is installed.
+	with patch.dict('sys.modules', {name: None}):
 		yield
 
 
-class TestDefaultProgressCls:
-	"""Test the default_progress_cls() function and get_progress(True)."""
+@pytest.mark.parametrize('with_tqdm', [False, True])
+class TestDefaultConfig:
+	"""Test the default_config() function and get_progress(True)."""
 
-	def test_no_tqdm(self):
-		"""Test with tqdm package not available."""
-		with no_tqdm():
-			with pytest.warns(UserWarning):
-				cls = default_progress_cls()
-			assert cls is NullProgressMeter
+	def test_default_config(self, with_tqdm):
+		"""Test default_config() function."""
 
-	def test_tqdm(self):
-		pytest.importorskip('tqdm')
-		assert default_progress_cls() is TqdmProgressMeter
+		if with_tqdm:
+			pytest.importorskip('tqdm')
+			conf = default_config()
+			assert conf.factory == TqdmProgressMeter.create
+
+		else:
+			with no_import('tqdm'):
+				with pytest.warns(UserWarning):
+					conf = default_config()
+				assert conf.factory == NullProgressMeter.create
+
+	def test_progress_config_true(self, with_tqdm):
+		"""Test passing True as argument to progress_config()."""
+		if with_tqdm:
+			pytest.importorskip('tqdm')  # Skip if tqdm not available.
+			config = progress_config(True, foo=1)
+			assert config.factory == TqdmProgressMeter.create
+			assert config.kw == dict(foo=1)
+
+		else:
+			with no_import('tqdm'):
+				with pytest.warns(UserWarning):
+					config = progress_config(True, foo=1)
+				assert config.factory == NullProgressMeter.create
+				assert config.kw == dict(foo=1)
 
 
 class TestProgressConfigFunc:
-	"""Test the progress_config() function."""
+	"""Test the progress_config() function.
+
+	The case where arg=True is tested in TestDefaultConfig.
+	"""
 
 	def test_null(self):
 		"""Test passing None and False as argument."""
 		for arg in [None, False]:
-			config = progress_config(arg, foo=1)
-			assert config.callable == NullProgressMeter.create
-			assert config.kw == dict(foo=1)
-
-	@pytest.mark.parametrize('with_tqdm', [False, True])
-	def test_true(self, with_tqdm):
-		"""Test passing True as argument."""
-		if with_tqdm:
-			pytest.importorskip('tqdm')  # Skip if tqdm not available.
-			config = progress_config(True, foo=1)
-			assert config.callable == TqdmProgressMeter.create
-			assert config.kw == dict(foo=1)
-
-		else:
-			with no_tqdm():
-				with pytest.warns(UserWarning):
-					config = progress_config(True, foo=1)
-				assert config.callable == NullProgressMeter.create
-				assert config.kw == dict(foo=1)
+			config = progress_config(arg)
+			assert config.factory == NullProgressMeter.create
 
 	def test_cls(self):
 		"""Test passing AbstractProgressMeter subclass as argument."""
 		for cls in [NullProgressMeter, TestProgressMeter]:
 			config = progress_config(cls, foo=1)
-			assert config.callable == cls.create
+			assert config.factory == cls.create
 			assert config.kw == dict(foo=1)
 
 	def test_str(self):
-		for key, cls in [('tqdm', TqdmProgressMeter), ('click', ClickProgressMeter)]:
-			config = progress_config(key, foo=1)
-			assert config.callable == cls.create
-			assert config.kw == dict(foo=1)
+		for key, config in REGISTRY.items():
+			config2 = progress_config(key, foo=1)
+			assert config2.factory == config.factory
+			assert config2.kw == {**config.kw, 'foo': 1}
 
 	def test_factory(self):
 		"""Test passing a factory function as argument."""
@@ -80,7 +84,7 @@ class TestProgressConfigFunc:
 			return TestProgressMeter.create(total, initial=initial, foo=1, **kw)
 
 		config = progress_config(factory, foo=1)
-		assert config.callable == factory
+		assert config.factory == factory
 		assert config.kw == dict(foo=1)
 
 	def test_progressconfig(self):
@@ -89,7 +93,7 @@ class TestProgressConfigFunc:
 		config = TestProgressMeter.config(foo=1, bar=2)
 		config2 = progress_config(config, bar=20, baz=3)
 
-		assert config2.callable == TestProgressMeter.create
+		assert config2.factory == TestProgressMeter.create
 		assert config2.kw == dict(foo=1, bar=20, baz=3)
 
 	def test_invalid(selfj):
@@ -98,7 +102,10 @@ class TestProgressConfigFunc:
 
 
 class TestGetProgress:
-	"""Test the get_progress() function."""
+	"""Test the get_progress() function.
+
+	The case where arg=True is tested in TestDefaultConfig.
+	"""
 
 	@pytest.fixture()
 	def total(self):
@@ -112,22 +119,6 @@ class TestGetProgress:
 		"""Test passing None and False as argument."""
 		for arg in [None, False]:
 			assert isinstance(get_progress(arg, total, initial=initial), NullProgressMeter)
-
-	@pytest.mark.parametrize('with_tqdm', [False, True])
-	def test_true(self, total, initial, with_tqdm):
-		"""Test passing True as argument."""
-		if with_tqdm:
-			pytest.importorskip('tqdm')  # Skip if tqdm not available.
-			meter = get_progress(True, total, initial=initial)
-			assert isinstance(meter, TqdmProgressMeter)
-			assert meter.total == total
-			assert meter.n == initial
-
-		else:
-			with no_tqdm():
-				with pytest.warns(UserWarning):
-					meter = get_progress(True, total, initial=initial)
-				assert isinstance(meter, NullProgressMeter)
 
 	def test_cls(self, total, initial):
 		"""Test passing AbstractProgressMeter subclass as argument."""
@@ -176,16 +167,16 @@ class TestGetProgress:
 
 def test_capture_progress():
 	"""Test the capture_progress() function."""
-	config, instances = capture_progress(TestProgressMeter)
+	config, instances = capture_progress(TestProgressMeter.config())
 	assert instances == []
 
-	instance1 = config.create(100)
+	instance1 = config.create(10)
 	assert instances == [instance1]
 
-	instance2 = config.create(100)
+	instance2 = config.create(20)
 	assert instances == [instance1, instance2]
 
-	instance3 = config.create(100)
+	instance3 = config.create(30)
 	assert instances == [instance1, instance2, instance3]
 
 
@@ -193,7 +184,8 @@ def test_capture_progress():
 @pytest.mark.parametrize('abort_early', [False, True])
 def test_iter_progress(pass_total, abort_early):
 	"""Test the iter_progress() function."""
-	items = ascii_letters
+	import string
+	items = string.ascii_letters
 	abort_at = 10
 
 	if pass_total:
@@ -230,83 +222,7 @@ def test_iter_progress(pass_total, abort_early):
 	assert itr.meter.closed  # Always closed after exiting context
 
 
-def test_NullProgressMeter():
-	"""Test the NullProgressMeter class."""
+class TestRegister:
+	"""Test the register() function."""
 
-	# All methods are no-ops so just test we can call interface funcs with no errors.
-	meter = NullProgressMeter()
-	meter.increment()
-	meter.increment(10)
-	meter.moveto(100)
-	meter.close()
-
-	# Accepts standard arguments but ignores them
-	assert isinstance(meter.create(100), NullProgressMeter)
-	assert isinstance(meter.create(100, initial=10), NullProgressMeter)
-	assert isinstance(meter.create(100, foo=10), NullProgressMeter)
-
-
-class TestTestProgressMeter:
-	"""Test the TestProgressMeter class."""
-
-	def test_basic(self):
-		kw = dict(foo=1, bar=True)
-		pbar = TestProgressMeter(100, **kw)
-
-		assert pbar.total == 100
-		assert pbar.n == 0
-		assert not pbar.closed
-		assert pbar.kw == kw
-
-		pbar.increment()
-		assert pbar.n == 1
-
-		pbar.increment(10)
-		assert pbar.n == 11
-
-		pbar.increment(-1)
-		assert pbar.n == 10
-
-		pbar.moveto(50)
-		assert pbar.n == 50
-
-		pbar.moveto(40)
-		assert pbar.n == 40
-
-		with pytest.raises(ValueError):
-			pbar.increment(100)
-
-		with pytest.raises(ValueError):
-			pbar.increment(-100)
-
-		with pytest.raises(ValueError):
-			pbar.moveto(101)
-
-		with pytest.raises(ValueError):
-			pbar.moveto(-1)
-
-		pbar.close()
-		assert pbar.closed
-
-		with pytest.raises(RuntimeError):
-			pbar.increment()
-
-		with pytest.raises(RuntimeError):
-			pbar.moveto(100)
-
-	def test_no_allow_decrement(self):
-		pbar = TestProgressMeter(100, allow_decrement=False)
-
-		# Moving forward
-		pbar.increment()
-		pbar.increment(0)
-		pbar.increment(10)
-		pbar.moveto(50)
-
-		# Moving backward
-		with pytest.raises(ValueError):
-			pbar.increment(-1)
-
-		with pytest.raises(ValueError):
-			pbar.moveto(40)
-
+	# TODO

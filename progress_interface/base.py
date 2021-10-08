@@ -6,13 +6,17 @@ from warnings import warn
 
 
 #: Registry of :class:`.ProgressConfig` instances to string keys
-REGISTRY = dict()
+REGISTRY = dict()  # type Dict[str, ProgressConfig]
 
 
 class AbstractProgressMeter(ABC):
-	"""Abstract base class for an object which displays progress to the user.
+	"""
+	Abstract base class for an object which tracks the progress of a long-running task and possibly
+	displays it to the user.
 
-	Instances can be used as context managers, on exit the :meth:`close` method is called.
+	Concrete subclasses must implement the :meth:`moveto` and :meth:`create` methods along with the
+	:attr:`n`, :attr:`total`, and :attr:`closed` attributes. They may also optionally override
+	:meth:`increment` and :meth:`close`.
 
 	Attributes
 	----------
@@ -28,10 +32,9 @@ class AbstractProgressMeter(ABC):
 	total: int
 	closed: int
 
-	@abstractmethod
 	def increment(self, delta: int = 1):
 		"""Increment the position of the meter by the given value."""
-		pass
+		self.moveto(self.n + delta)
 
 	@abstractmethod
 	def moveto(self, n: int):
@@ -39,10 +42,10 @@ class AbstractProgressMeter(ABC):
 		pass
 
 	def close(self):
-		"""Stop displaying progress and perform whatever cleanup is necessary."""
+		"""Stop tracking/displaying progress and perform whatever cleanup is necessary."""
 		pass
 
-	def __enter__(self):
+	def __enter__(self) -> 'AbstractProgressMeter':
 		return self
 
 	def __exit__(self, *args):
@@ -58,7 +61,7 @@ class AbstractProgressMeter(ABC):
 	           file: t.Optional[t.TextIO] = None,
 	           **kw,
 	           ) -> 'AbstractProgressMeter':
-		"""Factory function with standardized signature to create instances.
+		"""Factory function with standardized signature to create instances of the class.
 
 		Parameters
 		----------
@@ -67,9 +70,9 @@ class AbstractProgressMeter(ABC):
 		initial
 			Initial value of :attr:`n`.
 		desc
-			Description to display to the user.
+			Description to display to the user, if applicable.
 		file
-			File-like object to write to. Defaults to ``sys.stderr``.
+			File-like object to write text output to, if applicable. Defaults to ``sys.stderr``.
 		\\**kw
 			Additional options depending on the subclass.
 		"""
@@ -77,53 +80,74 @@ class AbstractProgressMeter(ABC):
 
 	@classmethod
 	def config(cls, **kw) -> 'ProgressConfig':
-		"""Create a factory function which creates instances with the given default settings.
+		"""
+		Get a ``ProgressConfig`` which creates instances of the class with the given default
+		settings..
 
 		Keyword arguments are passed on to :meth:`create`.
 		"""
 		return ProgressConfig(cls.create, kw)
 
 
-#: Type alias for a callable which takes ``total`` and keyword arguments and returns a progress meter instance.
+class NullProgressMeter(AbstractProgressMeter):
+	"""Progress meter which does nothing."""
+
+	def increment(self, delta: int = 1):
+		pass
+
+	def moveto(self, n: int):
+		pass
+
+	def close(self):
+		pass
+
+	@classmethod
+	def create(cls, total: int, initial: int = 0, **kw):
+		return cls()
+
+
+#: Type alias for a factory function with signature ``(total: int, **kw) -> AbstractProgressMeter``.
 ProgressFactoryFunc = t.Callable[[int], AbstractProgressMeter]
 
 
 class ProgressConfig:
 	"""Configuration settings used to create new progress meter instances.
 
-	This allows callers to pass the desired progress meter type and other settings to API functions
-	which can then create the instance themselves within the function body by specifying the total
-	length and other final options.
+	This allows callers to pass the desired progress meter type and other settings to a function
+	without needing to know the total length and other details about the task, which can be
+	determined within the function body.
 
 	Attributes
 	----------
-	callable
+	factory
 		The :meth:`.AbstractProgressMeter.create` method of a concrete progress meter type, or
-		another callable with the same signature which returns a progress meter instance.
+		another factory with the same signature which returns a progress meter instance.
 	kw
-		Keyword arguments to pass to callable.
+		Keyword arguments to pass to ``factory``.
 	"""
-	callable: ProgressFactoryFunc
+	factory: ProgressFactoryFunc
 	kw: t.Dict[str, t.Any]
 
-	def __init__(self, callable: ProgressFactoryFunc, kw: t.Dict[str, t.Any]):
-		self.callable = callable
+	def __init__(self, factory: ProgressFactoryFunc, kw: t.Dict[str, t.Any]):
+		self.factory = factory
 		self.kw = kw
 
 	def create(self, total: int, **kw) -> AbstractProgressMeter:
-		"""Call the factory function with the stored keyword arguments to create a progress meter instance.
+		"""
+		Create a progress meter instance by calling the factory function with the stored keyword
+		arguments.
 
 		The signature of this function is identical to :meth:`.AbstractProgressMeter.create`.
 		"""
 		final_kw = dict(self.kw)
 		final_kw.update(kw)
-		return self.callable(total, **final_kw)
+		return self.factory(total, **final_kw)
 
 	def update(self, *args: t.Mapping[str, t.Any], **kw) -> 'ProgressConfig':
 		"""Update keyword arguments and return a new instance."""
 		new_kw = dict(self.kw)
 		new_kw.update(*args, **kw)
-		return ProgressConfig(self.callable, new_kw)
+		return ProgressConfig(self.factory, new_kw)
 
 
 def default_config() -> ProgressConfig:
@@ -134,11 +158,12 @@ def default_config() -> ProgressConfig:
 	"""
 	try:
 		from tqdm import tqdm
-		from .lib import TqdmProgressMeter
-		return TqdmProgressMeter.config()
 	except ImportError:
 		warn('Could not import tqdm (not installed?), no default progress meter type available.')
 		return NullProgressMeter.config()
+
+	from .meters import TqdmProgressMeter
+	return TqdmProgressMeter.config()
 
 
 #: Type alias for argument to :func:`.get_config` and :func:`.get_progress`
@@ -146,20 +171,35 @@ ProgressArg = t.Union[ProgressConfig, str, bool, type, ProgressFactoryFunc, None
 
 
 def progress_config(arg: ProgressArg, **kw) -> ProgressConfig:
-	"""Get a ``ProgressConfig`` instance from flexible argument types.
+	"""Get a ``ProgressConfig`` instance from a variety argument types.
 
-	See :func:`.get_progress` for description of allowed argument types/values.
+	Accepts the following types/values for the argument:
+
+	- :class:`.ProgressConfig`
+	- ``None`` - uses :class:`.NullProgressBar`.
+	- ``True`` - uses value returned by :func:`.default_config`.
+	- ``False`` - same as ``None``.
+	- ``str`` key - Looks up progress bar class/factory function in :data:`.REGISTRY`.
+	- :class:`.AbstractProgressMeter` subclass
+	- ``Callable`` - factory function. Must have same signature as :meth:`.AbstractProgressMeter.create`.
+
+	Parameters
+	----------
+	arg
+		See above.
+	\\**kw
+		Additional keyword arguments to add to the returned config object.
 	"""
+	if arg is True:
+		arg = default_config()
+	if isinstance(arg, str):
+		arg = REGISTRY[arg]
 	if isinstance(arg, ProgressConfig):
 		return arg.update(kw) if kw else arg
 	if arg is None or arg is False:
-		return NullProgressMeter.config(**kw)
-	if arg is True:
-		return default_config()
+		return NullProgressMeter.config()
 	if isinstance(arg, type) and issubclass(arg, AbstractProgressMeter):
 		return ProgressConfig(arg.create, kw)
-	if isinstance(arg, str):
-		return ProgressConfig(REGISTRY[arg], kw)
 	if callable(arg):
 		return ProgressConfig(arg, kw)
 
@@ -167,30 +207,15 @@ def progress_config(arg: ProgressArg, **kw) -> ProgressConfig:
 
 
 def get_progress(arg: ProgressArg, total: int, initial: int = 0, **kw) -> AbstractProgressMeter:
-	"""Get a progress meter instance.
+	"""Create a progress meter instance.
 
-	Meant to be used within API funcs in which the caller wants to specify the type and
-	parameters of the progress meter but cannot pass an actual instance because the total number of
-	iterations is determined within the body of the function. Instead the API function can take
-	a single ``progress`` argument which specifies this information, then create the instance by
-	by calling this function with than information along with the total length.
-
-	Accepts the following types/values for the argument:
-
-	- :class:`.ProgressConfig`
-	- ``None`` - uses :class:`.NullProgressBar`.
-	- ``True`` - uses class returned by :func:`.default_progress_cls`.
-	- ``False`` - same as ``None``.
-	- ``str`` key - Looks up progress bar class/factory function in :data:`.REGISTRY`.
-	- :class:`.AbstractProgressMeter` subclass
-	- ``callable`` - factory function. Must have same signature as :meth:`.AbstractProgressMeter.create`.
+	See :func:`.progress_config` for description of allowed types/values for the argument.
 
 	Parameters
 	----------
 	arg
-		See above.
 	total
-		Length of progress meter to create.
+		Number of expected iterations.
 	initial
 		Initial position of progress meter.
 	\\**kw
@@ -199,39 +224,6 @@ def get_progress(arg: ProgressArg, total: int, initial: int = 0, **kw) -> Abstra
 	"""
 	config = progress_config(arg)
 	return config.create(total, initial=initial, **kw)
-
-
-def register(key: str, arg: t.Union[type, ProgressConfig, t.Callable] = None, *, overwrite: bool=False):
-	"""Register a progress meter class or factory function under the given key.
-
-	Parameters
-	----------
-	key
-		Key to register under.
-	arg
-		:class:`ProgressConfig` instance, :class:`AbstractProgressMeter` subclass, or factory
-		function. If None will return a decorator that performs the registration.
-	overwrite
-		Whether to allow overwriting of existing keys.
-
-	Returns
-	-------
-	Union[None, Callable]
-		None if ``cls_or_func`` has a value, otherwise a decorator function which registers its
-		argument under the given key and returns it unchanged.
-	"""
-	def decorator(_arg: t.Union[type, t.Callable]):
-		if not overwrite and key in REGISTRY:
-			raise ValueError(f'Key {key!r} already exists in the registry')
-
-		REGISTRY[key] = progress_config(_arg)
-		return _arg
-
-	if arg is None:
-		return decorator
-	else:
-		decorator(arg)
-		return None
 
 
 class ProgressIterator(t.Iterator):
@@ -301,7 +293,7 @@ def capture_progress(config: ProgressConfig) -> t.Tuple[ProgressConfig, t.List[A
 	Creates a ``ProgressConfig`` which captures references to the progress meter instances created
 	with it.
 
-	This is intended to be used for testing other API functions which create progress meter instances
+	This is intended to be used for testing functions which create progress meter instances
 	internally that normally would not be accessible by the caller. The captured instance can be
 	checked to ensure it has the correct attributes and went through the full range of iterations,
 	for example.
@@ -323,56 +315,36 @@ def capture_progress(config: ProgressConfig) -> t.Tuple[ProgressConfig, t.List[A
 	return progress_config(factory), instances
 
 
-class NullProgressMeter(AbstractProgressMeter):
-	"""Progress meter which does nothing."""
+def register(key: str, arg: t.Optional[ProgressArg] = None, *, overwrite: bool=False):
+	"""Register a progress meter class or factory function under the given key.
 
-	def increment(self, delta: int = 1):
-		pass
+	If ``arg`` is not None, it is converted to a ``ProgressConfig`` instance and registered
+	immediately. Otherwise a decorator function is returned which registers its argument under the
+	given key.
 
-	def moveto(self, n: int):
-		pass
+	Parameters
+	----------
+	key
+		Key to register under.
+	arg
+		None or any value that can be passed to :func:`.progress_config`.
+	overwrite
+		Whether to allow overwriting of existing keys.
 
-	def close(self):
-		pass
-
-	@classmethod
-	def create(cls, total: int, initial: int = 0, **kw):
-		return cls()
-
-
-class TestProgressMeter(AbstractProgressMeter):
-	"""Progress meter which displays no user information but does track progress information.
-
-	To be used for testing.
+	Returns
+	-------
+	Union[ProgressConfig, Callable]
+		The ``ProgressConfig`` instance registered if ``arg`` is not None, otherwise a decorator
+		function which registers its argument and returns it unchanged.
 	"""
+	def decorator(_arg: t.Union[type, t.Callable]):
+		if not overwrite and key in REGISTRY:
+			raise ValueError(f'Key {key!r} already exists in the registry')
 
-	# This prevents pytest from trying to collect this class as a test
-	__test__ = False
+		REGISTRY[key] = progress_config(_arg)
+		return _arg
 
-	def __init__(self, total: int, initial: int = 0, allow_decrement: bool = True, **kw):
-		self.n = initial
-		self.total = total
-		self.allow_decrement = allow_decrement
-		self.kw = kw
-		self.closed = False
-
-	def increment(self, delta: int = 1):
-		self.moveto(self.n + delta)
-
-	def moveto(self, n: int):
-		if self.closed:
-			raise RuntimeError('Attempted to moveto closed progress meter.')
-		if n < 0:
-			raise ValueError(f'Attempted to set n to negative value {n}')
-		if n > self.total:
-			raise ValueError(f'Attempted to set n to {n}, total is {self.total}')
-		if not self.allow_decrement and n < self.n:
-			raise ValueError(f'Attempted to decrease n from {self.n} to {n} with allow_decrement=False')
-		self.n = n
-
-	def close(self):
-		self.closed = True
-
-	@classmethod
-	def create(cls, total: int, initial: int = 0, **kw):
-		return cls(total, initial, **kw)
+	if arg is None:
+		return decorator
+	else:
+		return decorator(arg)
