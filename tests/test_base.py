@@ -4,8 +4,9 @@ from unittest.mock import patch
 import pytest
 
 from progress_interface.base import default_config, progress_config, get_progress, iter_progress, \
-	capture_progress, NullProgressMeter, REGISTRY
-from progress_interface.meters import TestProgressMeter, TqdmProgressMeter, ClickProgressMeter
+	NullProgressMeter, REGISTRY
+from progress_interface.test import TestProgressMeter
+from progress_interface.meters import TqdmProgressMeter, ClickProgressMeter
 
 
 @contextmanager
@@ -163,21 +164,6 @@ class TestGetProgress:
 	def test_invalid(selfj):
 		with pytest.raises(TypeError):
 			get_progress(0, 100)
-
-
-def test_capture_progress():
-	"""Test the capture_progress() function."""
-	config, instances = capture_progress(TestProgressMeter.config())
-	assert instances == []
-
-	instance1 = config.create(10)
-	assert instances == [instance1]
-
-	instance2 = config.create(20)
-	assert instances == [instance1, instance2]
-
-	instance3 = config.create(30)
-	assert instances == [instance1, instance2, instance3]
 
 
 @pytest.mark.parametrize('pass_total', [False, True])

@@ -1,9 +1,10 @@
-"""Test progress meter implementations."""
+"""Test AbstractProgressMeter implementations."""
 
 import pytest
 
 from progress_interface.base import NullProgressMeter
-from progress_interface.meters import TestProgressMeter, TqdmProgressMeter, ClickProgressMeter
+from progress_interface.meters import TqdmProgressMeter, ClickProgressMeter
+from progress_interface.test import TestProgressMeter
 
 
 class TestNullProgressMeter():

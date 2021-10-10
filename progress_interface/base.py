@@ -288,33 +288,6 @@ def iter_progress(iterable: t.Iterable,
 	return ProgressIterator(iterable, meter)
 
 
-def capture_progress(config: ProgressConfig) -> t.Tuple[ProgressConfig, t.List[AbstractProgressMeter]]:
-	"""
-	Creates a ``ProgressConfig`` which captures references to the progress meter instances created
-	with it.
-
-	This is intended to be used for testing functions which create progress meter instances
-	internally that normally would not be accessible by the caller. The captured instance can be
-	checked to ensure it has the correct attributes and went through the full range of iterations,
-	for example.
-
-	Returns
-	-------
-	Tuple[ProgressConfig, List[AbstractProgressMeter]]
-		The first item is a modified ``ProgessConfig`` instance which can be passed to the function
-		to be tested. The second is a list which is initially empty, and is populated with progress
-		meter instances as they are created by it.
-	"""
-	instances = []
-
-	def factory(total, **kw):
-		meter = config.create(total, **kw)
-		instances.append(meter)
-		return meter
-
-	return progress_config(factory), instances
-
-
 def register(key: str, arg: t.Optional[ProgressArg] = None, *, overwrite: bool=False):
 	"""Register a progress meter class or factory function under the given key.
 

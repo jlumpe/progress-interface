@@ -5,43 +5,6 @@ import typing as t
 from .base import AbstractProgressMeter, register
 
 
-class TestProgressMeter(AbstractProgressMeter):
-	"""Progress meter which displays no user information but does track progress information.
-
-	To be used for testing.
-	"""
-
-	# This prevents pytest from trying to collect this class as a test
-	__test__ = False
-
-	def __init__(self, total: int, initial: int = 0, allow_decrement: bool = True, **kw):
-		self.n = initial
-		self.total = total
-		self.allow_decrement = allow_decrement
-		self.kw = kw
-		self.closed = False
-
-	def increment(self, delta: int = 1):
-		self.moveto(self.n + delta)
-
-	def moveto(self, n: int):
-		if self.closed:
-			raise RuntimeError('Attempted to moveto closed progress meter.')
-		if n < 0:
-			raise ValueError(f'Attempted to set n to negative value {n}')
-		if n > self.total:
-			raise ValueError(f'Attempted to set n to {n}, total is {self.total}')
-		if not self.allow_decrement and n < self.n:
-			raise ValueError(f'Attempted to decrease n from {self.n} to {n} with allow_decrement=False')
-		self.n = n
-
-	def close(self):
-		self.closed = True
-
-	@classmethod
-	def create(cls, total: int, initial: int = 0, **kw):
-		return cls(total, initial, **kw)
-
 
 @register('tqdm')
 class TqdmProgressMeter(AbstractProgressMeter):
