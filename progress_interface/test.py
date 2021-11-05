@@ -2,38 +2,38 @@
 
 import typing as t
 
-from .base import AbstractProgressMeter, ProgressConfig, progress_config
+from .base import AbstractProgressMonitor, ProgressConfig, progress_config
 
 
-def capture_progress(config: ProgressConfig) -> t.Tuple[ProgressConfig, t.List[AbstractProgressMeter]]:
+def capture_progress(config: ProgressConfig) -> t.Tuple[ProgressConfig, t.List[AbstractProgressMonitor]]:
 	"""
-	Creates a ``ProgressConfig`` which captures references to the progress meter instances created
+	Creates a ``ProgressConfig`` which captures references to the progress monitor instances created
 	with it.
 
-	This is intended to be used for testing functions which create progress meter instances
+	This is intended to be used for testing functions which create progress monitor instances
 	internally that normally would not be accessible by the caller. The captured instance can be
 	checked to ensure it has the correct attributes and went through the full range of iterations,
 	for example.
 
 	Returns
 	-------
-	Tuple[ProgressConfig, List[AbstractProgressMeter]]
+	Tuple[ProgressConfig, List[AbstractProgressMonitor]]
 		The first item is a modified ``ProgessConfig`` instance which can be passed to the function
 		to be tested. The second is a list which is initially empty, and is populated with progress
-		meter instances as they are created by it.
+		monitor instances as they are created by it.
 	"""
 	instances = []
 
 	def factory(total, **kw):
-		meter = config.create(total, **kw)
-		instances.append(meter)
-		return meter
+		monitor = config.create(total, **kw)
+		instances.append(monitor)
+		return monitor
 
 	return progress_config(factory), instances
 
 
-class TestProgressMeter(AbstractProgressMeter):
-	"""Progress meter which displays no user information but does track progress information.
+class TestProgressMonitor(AbstractProgressMonitor):
+	"""Progress monitor which displays no user information but does track progress information.
 
 	To be used for testing.
 	"""
@@ -53,7 +53,7 @@ class TestProgressMeter(AbstractProgressMeter):
 
 	def moveto(self, n: int):
 		if self.closed:
-			raise RuntimeError('Attempted to moveto closed progress meter.')
+			raise RuntimeError('Attempted to moveto closed progress monitor.')
 		if n < 0:
 			raise ValueError(f'Attempted to set n to negative value {n}')
 		if n > self.total:

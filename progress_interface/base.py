@@ -1,4 +1,4 @@
-"""Abstract interface for progress meters."""
+"""Abstract interface for monitoring task progress."""
 
 from abc import ABC, abstractmethod
 import typing as t
@@ -9,7 +9,7 @@ from warnings import warn
 REGISTRY = dict()  # type Dict[str, ProgressConfig]
 
 
-class AbstractProgressMeter(ABC):
+class AbstractProgressMonitor(ABC):
 	"""
 	Abstract base class for an object which tracks the progress of a long-running task and possibly
 	displays it to the user.
@@ -26,26 +26,26 @@ class AbstractProgressMeter(ABC):
 	total
 		Expected total number of iterations.
 	closed
-		Whether the meter has been closed/completed.
+		Whether the monitor has been closed/completed.
 	"""
 	n: int
 	total: int
 	closed: int
 
 	def increment(self, delta: int = 1):
-		"""Increment the position of the meter by the given value."""
+		"""Increment the position of the monitor by the given value."""
 		self.moveto(self.n + delta)
 
 	@abstractmethod
 	def moveto(self, n: int):
-		"""Set the meter's position to the given value."""
+		"""Set the monitor's position to the given value."""
 		pass
 
 	def close(self):
 		"""Stop tracking/displaying progress and perform whatever cleanup is necessary."""
 		pass
 
-	def __enter__(self) -> 'AbstractProgressMeter':
+	def __enter__(self) -> 'AbstractProgressMonitor':
 		return self
 
 	def __exit__(self, *args):
@@ -60,7 +60,7 @@ class AbstractProgressMeter(ABC):
 	           desc: t.Optional[str] = None,
 	           file: t.Optional[t.TextIO] = None,
 	           **kw,
-	           ) -> 'AbstractProgressMeter':
+	           ) -> 'AbstractProgressMonitor':
 		"""Factory function with standardized signature to create instances of the class.
 
 		Parameters
@@ -89,8 +89,8 @@ class AbstractProgressMeter(ABC):
 		return ProgressConfig(cls.create, kw)
 
 
-class NullProgressMeter(AbstractProgressMeter):
-	"""Progress meter which does nothing."""
+class NullProgressMonitor(AbstractProgressMonitor):
+	"""Progress monitor which does nothing."""
 
 	def increment(self, delta: int = 1):
 		pass
@@ -106,22 +106,22 @@ class NullProgressMeter(AbstractProgressMeter):
 		return cls()
 
 
-#: Type alias for a factory function with signature ``(total: int, **kw) -> AbstractProgressMeter``.
-ProgressFactoryFunc = t.Callable[[int], AbstractProgressMeter]
+#: Type alias for a factory function with signature ``(total: int, **kw) -> AbstractProgressMonitor``.
+ProgressFactoryFunc = t.Callable[[int], AbstractProgressMonitor]
 
 
 class ProgressConfig:
-	"""Configuration settings used to create new progress meter instances.
+	"""Configuration settings used to create new progress monitor instances.
 
-	This allows callers to pass the desired progress meter type and other settings to a function
+	This allows callers to pass the desired progress monitor type and other settings to a function
 	without needing to know the total length and other details about the task, which can be
 	determined within the function body.
 
 	Attributes
 	----------
 	factory
-		The :meth:`.AbstractProgressMeter.create` method of a concrete progress meter type, or
-		another factory with the same signature which returns a progress meter instance.
+		The :meth:`.AbstractProgressMonitor.create` method of a concrete progress monitor type, or
+		another factory with the same signature which returns a progress monitor instance.
 	kw
 		Keyword arguments to pass to ``factory``.
 	"""
@@ -132,12 +132,12 @@ class ProgressConfig:
 		self.factory = factory
 		self.kw = kw
 
-	def create(self, total: int, **kw) -> AbstractProgressMeter:
+	def create(self, total: int, **kw) -> AbstractProgressMonitor:
 		"""
-		Create a progress meter instance by calling the factory function with the stored keyword
+		Create a progress monitor instance by calling the factory function with the stored keyword
 		arguments.
 
-		The signature of this function is identical to :meth:`.AbstractProgressMeter.create`.
+		The signature of this function is identical to :meth:`.AbstractProgressMonitor.create`.
 		"""
 		final_kw = dict(self.kw)
 		final_kw.update(kw)
@@ -153,17 +153,17 @@ class ProgressConfig:
 def default_config() -> ProgressConfig:
 	"""Get the default :class:`.ProgressConfig` instance to use.
 
-	Currently attempts to use :class:`.TqdmProgressMeter`, if ``tqdm`` is not importable prints a
-	warning and uses :class:`.NullProgressMeter`.
+	Currently attempts to use :class:`.TqdmProgressMonitor`, if ``tqdm`` is not importable prints a
+	warning and uses :class:`.NullProgressMonitor`.
 	"""
 	try:
 		from tqdm import tqdm
 	except ImportError:
-		warn('Could not import tqdm (not installed?), no default progress meter type available.')
-		return NullProgressMeter.config()
+		warn('Could not import tqdm (not installed?), no default progress monitor type available.')
+		return NullProgressMonitor.config()
 
-	from .meters import TqdmProgressMeter
-	return TqdmProgressMeter.config()
+	from .monitors import TqdmProgressMonitor
+	return TqdmProgressMonitor.config()
 
 
 #: Type alias for argument to :func:`.get_config` and :func:`.get_progress`
@@ -180,8 +180,8 @@ def progress_config(arg: ProgressArg, **kw) -> ProgressConfig:
 	- ``True`` - uses value returned by :func:`.default_config`.
 	- ``False`` - same as ``None``.
 	- ``str`` key - Looks up progress bar class/factory function in :data:`.REGISTRY`.
-	- :class:`.AbstractProgressMeter` subclass
-	- ``Callable`` - factory function. Must have same signature as :meth:`.AbstractProgressMeter.create`.
+	- :class:`.AbstractProgressMonitor` subclass
+	- ``Callable`` - factory function. Must have same signature as :meth:`.AbstractProgressMonitor.create`.
 
 	Parameters
 	----------
@@ -197,8 +197,8 @@ def progress_config(arg: ProgressArg, **kw) -> ProgressConfig:
 	if isinstance(arg, ProgressConfig):
 		return arg.update(kw) if kw else arg
 	if arg is None or arg is False:
-		return NullProgressMeter.config()
-	if isinstance(arg, type) and issubclass(arg, AbstractProgressMeter):
+		return NullProgressMonitor.config()
+	if isinstance(arg, type) and issubclass(arg, AbstractProgressMonitor):
 		return ProgressConfig(arg.create, kw)
 	if callable(arg):
 		return ProgressConfig(arg, kw)
@@ -206,8 +206,8 @@ def progress_config(arg: ProgressArg, **kw) -> ProgressConfig:
 	raise TypeError(arg)
 
 
-def get_progress(arg: ProgressArg, total: int, initial: int = 0, **kw) -> AbstractProgressMeter:
-	"""Create a progress meter instance.
+def get_progress(arg: ProgressArg, total: int, initial: int = 0, **kw) -> AbstractProgressMonitor:
+	"""Create a progress monitor instance.
 
 	See :func:`.progress_config` for description of allowed types/values for the argument.
 
@@ -217,9 +217,9 @@ def get_progress(arg: ProgressArg, total: int, initial: int = 0, **kw) -> Abstra
 	total
 		Number of expected iterations.
 	initial
-		Initial position of progress meter.
+		Initial position of progress monitor.
 	\\**kw
-		Additional keyword arguments to pass to progress meter class or factory function defined by
+		Additional keyword arguments to pass to progress monitor class or factory function defined by
 		``arg``..
 	"""
 	config = progress_config(arg)
@@ -228,22 +228,22 @@ def get_progress(arg: ProgressArg, total: int, initial: int = 0, **kw) -> Abstra
 
 class ProgressIterator(t.Iterator):
 	itr: t.Iterator
-	meter: AbstractProgressMeter
+	monitor: AbstractProgressMonitor
 
-	def __init__(self, iterable: t.Iterable, meter: AbstractProgressMeter):
+	def __init__(self, iterable: t.Iterable, monitor: AbstractProgressMonitor):
 		self.itr = iter(iterable)
-		self.meter = meter
+		self.monitor = monitor
 		self._first = True
 
 	def __next__(self):
 		if not self._first:
-			self.meter.increment()
+			self.monitor.increment()
 		self._first = False
 
 		try:
 			value = next(self.itr)
 		except StopIteration:
-			self.meter.close()  # Close on reaching end
+			self.monitor.close()  # Close on reaching end
 			raise
 
 		return value
@@ -252,7 +252,7 @@ class ProgressIterator(t.Iterator):
 		return self
 
 	def __exit__(self, *args):
-		self.meter.close()
+		self.monitor.close()
 
 
 def iter_progress(iterable: t.Iterable,
@@ -260,10 +260,10 @@ def iter_progress(iterable: t.Iterable,
                   total: t.Optional[int] = None,
                   **kw,
                   ) -> ProgressIterator:
-	"""Display a progress meter while iterating over an object.
+	"""Display a progress monitor while iterating over an object.
 
 	The returned iterator object can also be used as a context manager to ensure that the progress
-	meter is closed properly even if iteration does not finish.
+	monitor is closed properly even if iteration does not finish.
 
 	Parameters
 	----------
@@ -274,22 +274,22 @@ def iter_progress(iterable: t.Iterable,
 	total
 		Total number of expected iterations. Defaults to ``len(iterable)``.
 	\\**kw
-		Additional keyword arguments to pass to progress meter factory.
+		Additional keyword arguments to pass to progress monitor factory.
 
 	Returns
 	-------
 	.ProgressIterator
-		Iterator over values in ``iterable`` which advances a progress meter.
+		Iterator over values in ``iterable`` which advances a progress monitor.
 	"""
 	if total is None:
 		total = len(iterable)
 
-	meter = get_progress(progress, total, **kw)
-	return ProgressIterator(iterable, meter)
+	monitor = get_progress(progress, total, **kw)
+	return ProgressIterator(iterable, monitor)
 
 
 def register(key: str, arg: t.Optional[ProgressArg] = None, *, overwrite: bool=False):
-	"""Register a progress meter class or factory function under the given key.
+	"""Register a progress monitor class or factory function under the given key.
 
 	If ``arg`` is not None, it is converted to a ``ProgressConfig`` instance and registered
 	immediately. Otherwise a decorator function is returned which registers its argument under the

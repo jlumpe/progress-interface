@@ -1,36 +1,36 @@
-"""Test AbstractProgressMeter implementations."""
+"""Test AbstractProgressMonitor implementations."""
 
 import pytest
 
-from progress_interface.base import NullProgressMeter
-from progress_interface.meters import TqdmProgressMeter, ClickProgressMeter
-from progress_interface.test import TestProgressMeter
+from progress_interface.base import NullProgressMonitor
+from progress_interface.monitors import TqdmProgressMonitor, ClickProgressMonitor
+from progress_interface.test import TestProgressMonitor
 
 
-class TestNullProgressMeter():
-	"""Test the NullProgressMeter class."""
+class TestNullProgressMonitor():
+	"""Test the NullProgressMonitor class."""
 
 	def test_methods(self):
 		# All methods are no-ops so just test we can call interface funcs with no errors.
-		meter = NullProgressMeter()
-		meter.increment()
-		meter.increment(10)
-		meter.moveto(100)
-		meter.close()
+		monitor = NullProgressMonitor()
+		monitor.increment()
+		monitor.increment(10)
+		monitor.moveto(100)
+		monitor.close()
 
 	def test_create(self):
 		# Accepts standard arguments but ignores them
-		assert isinstance(NullProgressMeter.create(100), NullProgressMeter)
-		assert isinstance(NullProgressMeter.create(100, initial=10), NullProgressMeter)
-		assert isinstance(NullProgressMeter.create(100, foo=10), NullProgressMeter)
+		assert isinstance(NullProgressMonitor.create(100), NullProgressMonitor)
+		assert isinstance(NullProgressMonitor.create(100, initial=10), NullProgressMonitor)
+		assert isinstance(NullProgressMonitor.create(100, foo=10), NullProgressMonitor)
 
 
-class TestTestProgressMeter:
-	"""Test the TestProgressMeter class."""
+class TestTestProgressMonitor:
+	"""Test the TestProgressMonitor class."""
 
 	def test_basic(self):
 		kw = dict(foo=1, bar=True)
-		pbar = TestProgressMeter(100, **kw)
+		pbar = TestProgressMonitor(100, **kw)
 
 		assert pbar.total == 100
 		assert pbar.n == 0
@@ -74,7 +74,7 @@ class TestTestProgressMeter:
 			pbar.moveto(100)
 
 	def test_no_allow_decrement(self):
-		pbar = TestProgressMeter(100, allow_decrement=False)
+		pbar = TestProgressMonitor(100, allow_decrement=False)
 
 		# Moving forward
 		pbar.increment()
@@ -91,10 +91,10 @@ class TestTestProgressMeter:
 
 
 class TestClickProgressMeter:
-	"""Test the ClickProgressMeter class."""
+	"""Test the ClickProgressMonitor class."""
 	# TODO
 
 
 class TestTqdmProgressMeter:
-	"""Test the TqdmProgressMeter class."""
+	"""Test the TqdmProgressMonitor class."""
 	# TODO

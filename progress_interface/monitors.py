@@ -1,14 +1,14 @@
-"""Progress meter implementations."""
+"""Progress monitor implementations."""
 
 import typing as t
 
-from .base import AbstractProgressMeter, register
+from .base import AbstractProgressMonitor, register
 
 
 
 @register('tqdm')
-class TqdmProgressMeter(AbstractProgressMeter):
-	"""Wrapper around a progress meter from the ``tqdm`` library."""
+class TqdmProgressMonitor(AbstractProgressMonitor):
+	"""Wrapper around a progress bar from the ``tqdm`` library."""
 
 	def __init__(self, pbar: 'tqdm.std.tqdm'):
 		self.pbar = pbar
@@ -48,7 +48,7 @@ class TqdmProgressMeter(AbstractProgressMeter):
 
 
 @register('click')
-class ClickProgressMeter(AbstractProgressMeter):
+class ClickProgressMonitor(AbstractProgressMonitor):
 	"""Wrapper around a progress bar from the ``click`` library."""
 
 	def __init__(self, pbar):

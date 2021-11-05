@@ -4,9 +4,9 @@ from unittest.mock import patch
 import pytest
 
 from progress_interface.base import default_config, progress_config, get_progress, iter_progress, \
-	NullProgressMeter, REGISTRY
-from progress_interface.test import TestProgressMeter
-from progress_interface.meters import TqdmProgressMeter, ClickProgressMeter
+	NullProgressMonitor, REGISTRY
+from progress_interface.test import TestProgressMonitor
+from progress_interface.monitors import TqdmProgressMonitor, ClickProgressMonitor
 
 
 @contextmanager
@@ -29,27 +29,27 @@ class TestDefaultConfig:
 		if with_tqdm:
 			pytest.importorskip('tqdm')
 			conf = default_config()
-			assert conf.factory == TqdmProgressMeter.create
+			assert conf.factory == TqdmProgressMonitor.create
 
 		else:
 			with no_import('tqdm'):
 				with pytest.warns(UserWarning):
 					conf = default_config()
-				assert conf.factory == NullProgressMeter.create
+				assert conf.factory == NullProgressMonitor.create
 
 	def test_progress_config_true(self, with_tqdm):
 		"""Test passing True as argument to progress_config()."""
 		if with_tqdm:
 			pytest.importorskip('tqdm')  # Skip if tqdm not available.
 			config = progress_config(True, foo=1)
-			assert config.factory == TqdmProgressMeter.create
+			assert config.factory == TqdmProgressMonitor.create
 			assert config.kw == dict(foo=1)
 
 		else:
 			with no_import('tqdm'):
 				with pytest.warns(UserWarning):
 					config = progress_config(True, foo=1)
-				assert config.factory == NullProgressMeter.create
+				assert config.factory == NullProgressMonitor.create
 				assert config.kw == dict(foo=1)
 
 
@@ -63,11 +63,11 @@ class TestProgressConfigFunc:
 		"""Test passing None and False as argument."""
 		for arg in [None, False]:
 			config = progress_config(arg)
-			assert config.factory == NullProgressMeter.create
+			assert config.factory == NullProgressMonitor.create
 
 	def test_cls(self):
-		"""Test passing AbstractProgressMeter subclass as argument."""
-		for cls in [NullProgressMeter, TestProgressMeter]:
+		"""Test passing AbstractProgressMonitor subclass as argument."""
+		for cls in [NullProgressMonitor, TestProgressMonitor]:
 			config = progress_config(cls, foo=1)
 			assert config.factory == cls.create
 			assert config.kw == dict(foo=1)
@@ -82,7 +82,7 @@ class TestProgressConfigFunc:
 		"""Test passing a factory function as argument."""
 
 		def factory(total, *, initial=None, **kw):
-			return TestProgressMeter.create(total, initial=initial, foo=1, **kw)
+			return TestProgressMonitor.create(total, initial=initial, foo=1, **kw)
 
 		config = progress_config(factory, foo=1)
 		assert config.factory == factory
@@ -91,10 +91,10 @@ class TestProgressConfigFunc:
 	def test_progressconfig(self):
 		"""Test passing a factory function as argument."""
 
-		config = TestProgressMeter.config(foo=1, bar=2)
+		config = TestProgressMonitor.config(foo=1, bar=2)
 		config2 = progress_config(config, bar=20, baz=3)
 
-		assert config2.factory == TestProgressMeter.create
+		assert config2.factory == TestProgressMonitor.create
 		assert config2.kw == dict(foo=1, bar=20, baz=3)
 
 	def test_invalid(selfj):
@@ -119,47 +119,47 @@ class TestGetProgress:
 	def test_null(self, total, initial):
 		"""Test passing None and False as argument."""
 		for arg in [None, False]:
-			assert isinstance(get_progress(arg, total, initial=initial), NullProgressMeter)
+			assert isinstance(get_progress(arg, total, initial=initial), NullProgressMonitor)
 
 	def test_cls(self, total, initial):
-		"""Test passing AbstractProgressMeter subclass as argument."""
-		for cls in [NullProgressMeter, TestProgressMeter]:
-			meter = get_progress(cls, total, initial=initial)
-			assert isinstance(meter, cls)
+		"""Test passing AbstractProgressMonitor subclass as argument."""
+		for cls in [NullProgressMonitor, TestProgressMonitor]:
+			monitor = get_progress(cls, total, initial=initial)
+			assert isinstance(monitor, cls)
 
-			if cls is not NullProgressMeter:
-				assert meter.total == total
-				assert meter.n == initial
+			if cls is not NullProgressMonitor:
+				assert monitor.total == total
+				assert monitor.n == initial
 
 	def test_str(self, total, initial):
-		meter = get_progress('click', total, initial=initial)
-		assert isinstance(meter, ClickProgressMeter)
-		assert meter.total == total
-		assert meter.n == initial
+		monitor = get_progress('click', total, initial=initial)
+		assert isinstance(monitor, ClickProgressMonitor)
+		assert monitor.total == total
+		assert monitor.n == initial
 
 	def test_factory(self, total, initial):
 		"""Test passing a factory function as argument."""
 
 		def factory(total, *, initial=None, **kw):
-			return TestProgressMeter.create(total, initial=initial, foo=1, **kw)
+			return TestProgressMonitor.create(total, initial=initial, foo=1, **kw)
 
-		meter = get_progress(factory, total, initial=initial, bar=2)
+		monitor = get_progress(factory, total, initial=initial, bar=2)
 
-		assert isinstance(meter, TestProgressMeter)
-		assert meter.total == total
-		assert meter.n == initial
-		assert meter.kw == dict(foo=1, bar=2)
+		assert isinstance(monitor, TestProgressMonitor)
+		assert monitor.total == total
+		assert monitor.n == initial
+		assert monitor.kw == dict(foo=1, bar=2)
 
 	def test_progressconfig(self, total, initial):
 		"""Test passing a factory function as argument."""
 
-		config = TestProgressMeter.config(foo=1)
-		meter = get_progress(config, total, initial=initial, bar=2)
+		config = TestProgressMonitor.config(foo=1)
+		monitor = get_progress(config, total, initial=initial, bar=2)
 
-		assert isinstance(meter, TestProgressMeter)
-		assert meter.total == total
-		assert meter.n == initial
-		assert meter.kw == dict(foo=1, bar=2)
+		assert isinstance(monitor, TestProgressMonitor)
+		assert monitor.total == total
+		assert monitor.n == initial
+		assert monitor.kw == dict(foo=1, bar=2)
 
 	def test_invalid(selfj):
 		with pytest.raises(TypeError):
@@ -181,31 +181,31 @@ def test_iter_progress(pass_total, abort_early):
 		iterable = items
 		total = None
 
-	with iter_progress(iterable, TestProgressMeter, total=total, foo=1) as itr:
-		assert isinstance(itr.meter, TestProgressMeter)
-		assert itr.meter.total == len(items)
-		assert itr.meter.kw == dict(foo=1)
-		assert itr.meter.n == 0
-		assert not itr.meter.closed
+	with iter_progress(iterable, TestProgressMonitor, total=total, foo=1) as itr:
+		assert isinstance(itr.monitor, TestProgressMonitor)
+		assert itr.monitor.total == len(items)
+		assert itr.monitor.kw == dict(foo=1)
+		assert itr.monitor.n == 0
+		assert not itr.monitor.closed
 
 		for i, val in enumerate(itr):
 			assert val == items[i]
-			assert itr.meter.n == i
-			assert not itr.meter.closed
+			assert itr.monitor.n == i
+			assert not itr.monitor.closed
 
 			if abort_early and i == abort_at:
 				break
 
 		if abort_early:
 			assert i == abort_at
-			assert itr.meter.n == abort_at
-			assert not itr.meter.closed
+			assert itr.monitor.n == abort_at
+			assert not itr.monitor.closed
 		else:
 			assert i == len(items) - 1
-			assert itr.meter.n == len(items)
-			assert itr.meter.closed
+			assert itr.monitor.n == len(items)
+			assert itr.monitor.closed
 
-	assert itr.meter.closed  # Always closed after exiting context
+	assert itr.monitor.closed  # Always closed after exiting context
 
 
 class TestRegister:
