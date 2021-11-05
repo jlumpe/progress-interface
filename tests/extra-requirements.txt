@@ -1,0 +1,3 @@
+# Install 3rd-party libraries to test adapters
+tqdm
+click
