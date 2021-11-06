@@ -132,6 +132,7 @@ class TestGetProgress:
 				assert monitor.n == initial
 
 	def test_str(self, total, initial):
+		# TODO - use a type that doesn't require 3rd-party library
 		monitor = get_progress('click', total, initial=initial)
 		assert isinstance(monitor, ClickProgressMonitor)
 		assert monitor.total == total

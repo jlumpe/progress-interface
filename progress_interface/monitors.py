@@ -72,9 +72,15 @@ register('tqdm-notebook', TqdmProgressMonitor.config(tqdm='tqdm.notebook:tqdm'))
 
 @register('click')
 class ClickProgressMonitor(AbstractProgressMonitor):
-	"""Wrapper around a progress bar from the ``click`` library."""
+	"""Wrapper around a progress bar from the ``click`` library, using ``click.progressbar()``."""
 
 	def __init__(self, pbar):
+		"""
+		Parameters
+		----------
+		pbar
+			Progress bar object returned by ``click.progressbar``.
+		"""
 		self.pbar = pbar
 
 	@property
@@ -107,6 +113,12 @@ class ClickProgressMonitor(AbstractProgressMonitor):
 	           file: t.Optional[t.TextIO] = None,
 	           **kw,
 	           ):
+		"""
+		Parameters
+		----------
+		\\**kw
+			Passed to ``click.progressbar``.
+		"""
 		import click
 		pbar = click.progressbar(length=total, label=desc, file=file, **kw)
 		if initial != 0:

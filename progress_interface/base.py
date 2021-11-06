@@ -1,11 +1,11 @@
-"""Abstract interface for monitoring task progress."""
+"""Core functionality."""
 
 from abc import ABC, abstractmethod
 import typing as t
 from warnings import warn
 
 
-#: Registry of :class:`.ProgressConfig` instances to string keys
+#: Registry of string keys to :class:`.ProgressConfig` instances.
 REGISTRY = dict()  # type Dict[str, ProgressConfig]
 
 
@@ -166,7 +166,7 @@ def default_config() -> ProgressConfig:
 	return TqdmProgressMonitor.config()
 
 
-#: Type alias for argument to :func:`.get_config` and :func:`.get_progress`
+#: Type alias for argument to :func:`.get_config` and :func:`.get_progress`.
 ProgressArg = t.Union[ProgressConfig, str, bool, type, ProgressFactoryFunc, None]
 
 
