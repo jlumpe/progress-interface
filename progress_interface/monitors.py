@@ -1,16 +1,22 @@
 """Progress monitor implementations."""
 
 import typing as t
+from importlib import import_module
 
 from .base import AbstractProgressMonitor, register
-
 
 
 @register('tqdm')
 class TqdmProgressMonitor(AbstractProgressMonitor):
 	"""Wrapper around a progress bar from the ``tqdm`` library."""
 
-	def __init__(self, pbar: 'tqdm.std.tqdm'):
+	def __init__(self, pbar):
+		"""
+		Parameters
+		----------
+		pbar
+			``tqdm`` instance.
+		"""
 		self.pbar = pbar
 
 	@property
@@ -41,10 +47,27 @@ class TqdmProgressMonitor(AbstractProgressMonitor):
 	           initial: int = 0,
 	           desc: t.Optional[str] = None,
 	           file: t.Optional[t.TextIO] = None,
+	           tqdm: t.Union[type, str] = 'tqdm.auto:tqdm',
 	           **kw,
 	           ):
-		from tqdm import tqdm
+		"""
+		Parameters
+		----------
+		tqdm
+			``tqdm`` class to use. Can be a string formatted like ``'tqdm.std:tqdm'``.
+		\\**kw
+			Passed to ``tqdm`` constructor.
+		"""
+		if isinstance(tqdm, str):
+			modname, name = tqdm.split(':')
+			module = import_module(modname)
+			tqdm = getattr(module, name)
+
 		return cls(tqdm(total=total, desc=desc, initial=initial, file=file, **kw))
+
+
+register('tqdm-std', TqdmProgressMonitor.config(tqdm='tqdm.std:tqdm'))
+register('tqdm-notebook', TqdmProgressMonitor.config(tqdm='tqdm.notebook:tqdm'))
 
 
 @register('click')
